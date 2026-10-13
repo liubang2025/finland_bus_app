@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>芬兰实时公交查询</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h2 { color: #0000bf; text-align: center; }
+        .station-box { margin-bottom: 20px; }
+        input { width: calc(100% - 22px); padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; margin-bottom: 10px; }
+        button { width: 100%; background: #0000bf; color: white; border: none; padding: 12px; font-size: 16px; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #000099; }
+        .bus-item { display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid #eee; align-items: center; }
+        .bus-line { font-weight: bold; font-size: 18px; background: #0000bf; color: white; padding: 4px 8px; border-radius: 4px; }
+        .bus-time { font-size: 18px; color: #d9534f; font-weight: bold; }
+        .loading { text-align: center; color: #666; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>芬兰实时公交</h2>
+    <div class="station-box">
+        <label for="stopName">输入公交站名称 (例如 Kamppi):</label>
+        <input type="text" id="stopName" value="Kamppi" placeholder="输入站名拼音或英文">
+        <button onclick="searchStops()">查询附近车次</button>
+    </div>
+    
+    <div id="results">
+        <div class="loading">请输入站名并点击查询实时到站时间</div>
+    </div>
+</div>
+
+<script>
+async function searchStops() {
+    const keyword = document.getElementById('stopName').value;
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = '<div class="loading">正在查询 HSL 实时数据...</div>';
+
+    // HSL 官方公开的 GraphQL API 接口
+    const query = `
+      {
+        stops(name: "${keyword}") {
+          gtfsId
+          name
+          lat
+          lon
+          stoptimesWithoutPatterns(numberOfDepartures: 5) {
+            scheduledArrival
+            realtimeArrival
+            arrivalDelay
+            realtime
+            trip {
+              route {
+                shortName
+              }
+              headsign
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+        const response = await fetch('https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ query })
+        });
+
+        const data = await response.json();
+        const stops = data.data.stops;
+
+        if (!stops || stops.length === 0) {
+            resultsDiv.innerHTML = '<p>未找到该车站，请尝试其他拼写（如 Central Railway Station）。</p>';
+            return;
+        }
+
+        let html = '';
+        // 遍历找到的站点（取前3个匹配的站）
+        stops.slice(0, 3).forEach(stop => {
+            html += `<h3>📍 ${stop.name}</h3>`;
+            if (!stop.stoptimesWithoutPatterns || stop.stoptimesWithoutPatterns.length === 0) {
+                html += `<p>近期没有班次记录</p>`;
+            } else {
+                html += `<ul>`;
+                stop.stoptimesWithoutPatterns.forEach(time => {
+                    const routeName = time.trip.route.shortName;
+                    const headsign = time.trip.headsign;
+                    
+                    // 计算还有多少分钟到站
+                    const arrivalSeconds = time.realtimeArrival; // 当天从午夜开始的秒数
+                    const now = new Date();
+                    const currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+                    const waitMinutes = Math.max(0, Math.floor((arrivalSeconds - currentSeconds) / 60));
+
+                    html += `
+                        <div class="bus-item">
+                            <div>
+                                <span class="bus-line">${routeName}</span> 
+                                <span style="font-size: 14px; color: #555;">往 ${headsign}</span>
+                            </div>
+                            <div class="bus-time">${waitMinutes} 分钟后</div>
+                        </div>
+                    `;
+                });
+                html += `</ul>`;
+            }
+        });
+
+        resultsDiv.innerHTML = html;
+
+    } catch (error) {
+        console.error(error);
+        resultsDiv.innerHTML = '<p style="color:red;">获取数据失败，请检查网络。</p>';
+    }
+}
+</script>
+
+</body>
+</html>
