@@ -37,7 +37,7 @@
 async function searchStops() {
     const keyword = document.getElementById('stopName').value.trim();
     const resultsDiv = document.getElementById('results');
-    resultsDiv.innerHTML = '<div class="loading">正在查询 HSL 实时数据...</div>';
+    resultsDiv.innerHTML = '<div class="loading">正在连接 HSL v2 实时数据...</div>';
 
     const query = `
       {
@@ -58,7 +58,8 @@ async function searchStops() {
     `;
 
     try {
-        const response = await fetch('https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql', {
+        // 更新为最新的 HSL v2 官方 API 接口
+        const response = await fetch('https://api.digitransit.fi/routing/v2/hsl/gtfs/v1', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -119,7 +120,7 @@ async function searchStops() {
 
     } catch (error) {
         console.error(error);
-        resultsDiv.innerHTML = `<p style="color:red;">获取数据失败：${error.message}。建议将网页部署到 Netlify 后再测试（本地双击文件常因浏览器安全策略拦截跨域请求）。</p>`;
+        resultsDiv.innerHTML = `<p style="color:red;">获取数据失败：${error.message}</p>`;
     }
 }
 </script>
