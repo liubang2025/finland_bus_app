@@ -24,7 +24,7 @@
     <h2>芬兰实时公交</h2>
     <div class="station-box">
         <label for="stopName">输入公交站名称 (例如 Kamppi):</label>
-        <input type="text" id="stopName" value="Kamppi" placeholder="输入站名拼音或英文">
+        <input type="text" id="stopName" value="Kamppi" placeholder="输入站名英文">
         <button onclick="searchStops()">查询附近车次</button>
     </div>
     
@@ -35,23 +35,17 @@
 
 <script>
 async function searchStops() {
-    const keyword = document.getElementById('stopName').value;
+    const keyword = document.getElementById('stopName').value.trim();
     const resultsDiv = document.getElementById('results');
     resultsDiv.innerHTML = '<div class="loading">正在查询 HSL 实时数据...</div>';
 
-    // HSL 官方公开的 GraphQL API 接口
     const query = `
       {
         stops(name: "${keyword}") {
           gtfsId
           name
-          lat
-          lon
           stoptimesWithoutPatterns(numberOfDepartures: 5) {
-            scheduledArrival
             realtimeArrival
-            arrivalDelay
-            realtime
             trip {
               route {
                 shortName
@@ -73,28 +67,36 @@ async function searchStops() {
             body: JSON.stringify({ query })
         });
 
+        if (!response.ok) {
+            throw new Error(`HTTP 错误！状态码: ${response.status}`);
+        }
+
         const data = await response.json();
+        
+        if (!data.data || !data.data.stops) {
+            resultsDiv.innerHTML = '<p style="color:red;">未从服务器获取到有效数据。</p>';
+            return;
+        }
+
         const stops = data.data.stops;
 
-        if (!stops || stops.length === 0) {
-            resultsDiv.innerHTML = '<p>未找到该车站，请尝试其他拼写（如 Central Railway Station）。</p>';
+        if (stops.length === 0) {
+            resultsDiv.innerHTML = '<p>未找到该车站，请尝试其他拼写（如 Rautatientori）。</p>';
             return;
         }
 
         let html = '';
-        // 遍历找到的站点（取前3个匹配的站）
         stops.slice(0, 3).forEach(stop => {
             html += `<h3>📍 ${stop.name}</h3>`;
             if (!stop.stoptimesWithoutPatterns || stop.stoptimesWithoutPatterns.length === 0) {
                 html += `<p>近期没有班次记录</p>`;
             } else {
-                html += `<ul>`;
+                html += `<div>`;
                 stop.stoptimesWithoutPatterns.forEach(time => {
                     const routeName = time.trip.route.shortName;
                     const headsign = time.trip.headsign;
                     
-                    // 计算还有多少分钟到站
-                    const arrivalSeconds = time.realtimeArrival; // 当天从午夜开始的秒数
+                    const arrivalSeconds = time.realtimeArrival; 
                     const now = new Date();
                     const currentSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
                     const waitMinutes = Math.max(0, Math.floor((arrivalSeconds - currentSeconds) / 60));
@@ -109,7 +111,7 @@ async function searchStops() {
                         </div>
                     `;
                 });
-                html += `</ul>`;
+                html += `</div>`;
             }
         });
 
@@ -117,7 +119,7 @@ async function searchStops() {
 
     } catch (error) {
         console.error(error);
-        resultsDiv.innerHTML = '<p style="color:red;">获取数据失败，请检查网络。</p>';
+        resultsDiv.innerHTML = `<p style="color:red;">获取数据失败：${error.message}。建议将网页部署到 Netlify 后再测试（本地双击文件常因浏览器安全策略拦截跨域请求）。</p>`;
     }
 }
 </script>
